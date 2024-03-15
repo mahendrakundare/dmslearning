@@ -5,7 +5,14 @@ import com.dms.dmslearning.model.TokenResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.alfresco.core.handler.NodesApi;
+import org.alfresco.core.model.Node;
+import org.alfresco.core.model.NodeBodyCreate;
+import org.alfresco.core.model.NodeEntry;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
@@ -16,40 +23,45 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 @Component
 public class DocumentTransferServiceImpl implements DocumentTransferService {
 
+    @Autowired
+    private NodesApi nodesApi;
+
     @Override
-    public byte[] downloadFile(String fileName) throws JsonProcessingException {
-        //get token
-        //
-        String token = getTickets("admin", "admin");
-
-        //get nodeId
-        String nodeId = getNodeId(fileName, token);
-
-        //download file
-        return downloadContent(nodeId, token);
+    public byte[] downloadFile(String fileName, boolean usesdk) throws IOException {
+        if (usesdk) {
+            return getContentUsingSDK(fileName);
+        } else {
+            //get token
+            String token = getTickets("admin", "admin");
+            //get nodeId
+            String nodeId = getNodeId(fileName, token);
+            //download file
+            return downloadContent(nodeId, token);
+        }
     }
 
     @Override
-    public void uploadFile(MultipartFile file) throws IOException {
-        String token = getTickets("admin", "admin");
-        String nodeId = getNodeId("mktest", token);
+    public String uploadMultipartFile(MultipartFile file) throws IOException {
+//        String token = getTickets("admin", "admin");
+//        String nodeId = getNodeId("mktest", token);
 //        String response = uploadContent(file.getOriginalFilename(), file, nodeId, token);
-        String s = uploadContent(file, token);
+//        String s = uploadContent(file, token);
+        return uploadContentUsingSDK(file);
+    }
+
+    @Override
+    public String uploadFile(File file) throws IOException {
+        return uploadFileToAlfresco(file);
     }
 
     private String getTickets(String username, String password) {
         String ticketUrl = "http://localhost:8080/alfresco/api/-default-/public/authentication/versions/1/tickets";
         RestTemplate restTemplate = new RestTemplate();
-//        HashMap<String, String> entity = new HashMap<>();
-//        entity.put("accept", "application/json");
-//        entity.put("Content-Type", "application/json");
 
         HashMap<String, String> body = new HashMap<>();
         body.put("userId", username);
@@ -64,7 +76,12 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
     }
 
     private String getNodeId(String fileName, String token) throws JsonProcessingException {
-        String nodeUrl = "http://localhost:8080/alfresco/api/-default-/public/alfresco/versions/1/nodes/-root-/children?skipCount=0&maxItems=100&relativePath=/mktest";
+        String folderName = "/mktest" + "/";
+        String relativePath = folderName + fileName;
+        //to get list of items from folder
+//        String nodeUrl = "http://localhost:8080/alfresco/api/-default-/public/alfresco/versions/1/nodes/-root-/children?skipCount=0&maxItems=100&relativePath=/mktest";
+        //to get exact details of the items or node
+        String nodeUrl = "http://localhost:8080/alfresco/api/-default-/public/alfresco/versions/1/nodes/-root-?relativePath={relativePath}";
         RestTemplate restTemplate = new RestTemplate();
 
         String encoded = new String(Base64.getEncoder().encode(token.getBytes()));
@@ -73,26 +90,29 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
         headers.set("Accept", "application/json");
         headers.set("Authorization", "Basic " + encoded);
         HttpEntity<String> entity = new HttpEntity<>(headers);
+
+        // Set URL variables
+        Map<String, String> urlVariables = new HashMap<>();
+        urlVariables.put("relativePath", relativePath);
+
         ResponseEntity<String> response = restTemplate.exchange(
                 nodeUrl,
                 HttpMethod.GET,
                 entity,
-                String.class
+                String.class,
+                urlVariables
         );
 
         ObjectMapper objectMapper = new ObjectMapper();
 
         JsonNode jsonNode = objectMapper.readTree(response.getBody());
-        JsonNode nodeId = jsonNode.get("list").get("entries").get(0).get("entry").get("id");
+        JsonNode nodeId = jsonNode.get("entry").get("id");
 
         return nodeId.textValue();
     }
 
     private byte[] downloadContent(String nodeId, String token) {
-
-//        String contentUrl = "http://localhost:8080/alfresco/api/-default-/public/alfresco/versions/1/nodes/9f03253c-f8ed-4b0d-945e-ff1ecaefe371/content?attachment=true";
         String baseUrl = "http://localhost:8080";
-        String nId = "43467fa5-c4cc-41a7-ac67-4c81b5206946";
         String contentUrl = baseUrl + "/alfresco/api/-default-/public/alfresco/versions/1/nodes/{nodeId}/content?attachment={attachment}";
 
         RestTemplate restTemplate = new RestTemplate();
@@ -108,7 +128,7 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
 
         // Set URL variables
         Map<String, String> urlVariables = new HashMap<>();
-        urlVariables.put("nodeId", nId);
+        urlVariables.put("nodeId", nodeId);
         urlVariables.put("attachment", String.valueOf(true));
 
         ResponseEntity<byte[]> response = restTemplate.exchange(
@@ -121,40 +141,6 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
 
         return response.getBody();
     }
-
-//    private String uploadContent(String originalFilename, MultipartFile fileContent, String nodeId, String token) throws IOException {
-//        String uploadUrl = "http://localhost:8080/alfresco/api/-default-/public/alfresco/versions/1/nodes/c8355fd7-9d1a-4d18-9ce4-0140a2de275a/children";
-//    http://localhost:8080/alfresco/api/-default-/public/alfresco/versions/1/nodes/c8355fd7-9d1a-4d18-9ce4-0140a2de275a/children
-//        String encoded = new String(Base64.getEncoder().encode(token.getBytes()));
-////        headers.set("authorization", "Basic " + encoded);
-//        // RestTemplate instance (can be moved outside for code reuse)
-//        RestTemplate restTemplate = new RestTemplate();
-//
-//        // Create MultiValueMap for multipart request
-//        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-//
-//        // Create Resource from byte array
-//        Resource fileResource = new ByteArrayResource(fileContent.getBytes());
-//
-//        // Add file data to body
-//        body.add("filedata", fileResource);
-//
-//        // Optional: Add other form data if needed
-//        // body.add("description", "This is a test file");
-//
-//        // Set headers for multipart request
-//        HttpHeaders headers = new HttpHeaders();
-//        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-//        headers.set("authorization", "Basic " + encoded);
-//
-//        // Create HttpEntity with body and headers
-//        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
-//
-//        // Send POST request
-//        ResponseEntity<Object> exchange = restTemplate.exchange(uploadUrl, HttpMethod.POST, requestEntity, Object.class);
-//
-//        return "";
-//    }
 
     public String uploadContent(MultipartFile file, String token) throws IOException {
         RestTemplate restTemplate = new RestTemplate();
@@ -169,7 +155,6 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
         headers.set("Authorization", "Basic " + authString);
 
         MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
-        File file1 = getFile(file);
         parts.add("filedata", new FileSystemResource(new File(filePath)));
 
 
@@ -184,11 +169,6 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
             System.err.println("Error uploading file: " + e.getMessage());
         }
         return "";
-    }
-
-    @Override
-    public String uploadFile(File file) throws IOException {
-        return uploadFileToAlfresco(file);
     }
 
     public String uploadFileToAlfresco(File file) throws IOException {
@@ -214,12 +194,66 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
         }
     }
 
-    private File getFile(MultipartFile multipartFile) throws IOException {
-        File tempFile = File.createTempFile("upload", ".tmp"); // Adjust extension based on file type
-        multipartFile.transferTo(tempFile);
+    public byte[] getContentUsingSDK(String fileName) throws IOException {
+        String nodeId = "";
+        String relativePath = "mktest/" + fileName;
 
-        return tempFile;
+        ResponseEntity<NodeEntry> node = nodesApi.getNode("-root-", null, relativePath, null);
 
+        if (node.getStatusCode().is2xxSuccessful()) {
+            nodeId = node.getBody().getEntry().getId();
+        }
+
+        ResponseEntity<Resource> response = nodesApi.getNodeContent(nodeId, true, null, null);
+
+            return response.getBody().getContentAsByteArray();
+    }
+
+    public String uploadContentUsingSDK(MultipartFile file) {
+        String parentFolderId = "-root-";
+        String fileName = file.getOriginalFilename();
+        String title = "dockertypefile";
+        String description = "this is docker file";
+        String relativeFolderPath = "/mktest";
+
+        Node fileNode = createFileMetadata(parentFolderId, fileName, title, description, relativeFolderPath);
+
+        // Get the file bytes
+        byte[] fileData = null;
+        try {
+            fileData = file.getBytes();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        // Add the file node content
+        Node updatedFileNode = nodesApi.updateNodeContent(fileNode.getId(),
+                fileData, true, null, null, null, null).getBody().getEntry();
+
+
+        return "success";
+    }
+
+    private Node createFileMetadata(String parentFolderId, String fileName, String title, String description,
+                                    String relativeFolderPath) {
+        List<String> fileAspects = new ArrayList<String>();
+        fileAspects.add("cm:titled");
+        Map<String, String> fileProps = new HashMap<>();
+        fileProps.put("cm:title", title);
+        fileProps.put("cm:description", description);
+
+        NodeBodyCreate nodeBodyCreate = new NodeBodyCreate();
+        nodeBodyCreate.setName(fileName);
+        nodeBodyCreate.setNodeType("cm:content");
+        nodeBodyCreate.setAspectNames(fileAspects);
+        nodeBodyCreate.setProperties(fileProps);
+        nodeBodyCreate.setRelativePath(relativeFolderPath);
+
+        // Create the file node metadata
+        Node fileNode = nodesApi.createNode(parentFolderId, nodeBodyCreate, true, true, true,
+                null, null).getBody().getEntry();
+
+        return fileNode;
     }
 
 }

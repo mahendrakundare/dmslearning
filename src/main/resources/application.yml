@@ -1,20 +1,23 @@
+server:
+  port: 8090
 spring:
   application:
     name: dmslearning
+  jms:
+    cache:
+      enabled: false
+  security:
+    user:
+      password: password
+      name: user
 
-#  activemq:
-#    broker-url: tcp://activemq-host:61616
-#  jms:
-#    cache:
-#      enabled: false
-#
-#content:
-#  service:
-#    url: http://repository:8080
-#    security:
-#      basic Auth:
-#        username:admin
-#        password:admin
-server:
-  port: 8090
-##folder name constant
+content:
+  service:
+    url: http://localhost:8080
+    security:
+      basicAuth:
+        username: admin
+        password: admin
+
+custom:
+  using-sdk: false

@@ -1,8 +1,8 @@
 package com.dms.dmslearning.controller;
 
 import com.dms.dmslearning.services.DocumentTransferService;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -19,14 +19,17 @@ public class DownloadFileController {
     @Autowired
     DocumentTransferService documentTransferService;
 
+    @Value("${custom.using-sdk}")
+    private boolean usingSDK;
+
     @GetMapping("/message")
     public String getMessage() {
         return "Hello World";
     }
 
     @GetMapping("/download/{filename}")
-    public ResponseEntity downloadFile(@PathVariable String filename) throws JsonProcessingException {
-        byte[] file = documentTransferService.downloadFile(filename);
+    public ResponseEntity downloadFile(@PathVariable String filename) throws IOException {
+        byte[] file = documentTransferService.downloadFile(filename, usingSDK);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
@@ -34,24 +37,23 @@ public class DownloadFileController {
                 .body(file);
     }
 
-
-//    @PostMapping("/uploadFile")
-//    public ResponseEntity uploadFile(@RequestParam("filedata") MultipartFile file) throws IOException {
-//        downloadService.uploadFile(file);
-//        return ResponseEntity.ok().body("success");
-//    }
-
     @PostMapping("/uploadFile")
     public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile multipartFile) throws IOException {
+        String message = "";
+
+        if (usingSDK) {
+            message = documentTransferService.uploadMultipartFile(multipartFile);
+
+        } else {
         String originalFilename = multipartFile.getOriginalFilename();
         File tempFile = new File(System.getProperty("java.io.tmpdir") + File.separator + originalFilename);
         multipartFile.transferTo(tempFile);
-
-        String message = documentTransferService.uploadFile(tempFile);
+        message = documentTransferService.uploadFile(tempFile);
 
         if (!tempFile.delete()) {
             System.err.println("Failed to delete temporary file: " + tempFile.getAbsolutePath());
         }
+    }
 
         return ResponseEntity.ok(message);
     }
