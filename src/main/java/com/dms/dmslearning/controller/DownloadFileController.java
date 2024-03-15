@@ -57,4 +57,12 @@ public class DownloadFileController {
 
         return ResponseEntity.ok(message);
     }
+
+    @PostMapping("/folder")
+    public ResponseEntity<String> createFolder() throws Exception {
+
+        String response = documentTransferService.createFolder();
+
+        return ResponseEntity.ok(response);
+    }
 }

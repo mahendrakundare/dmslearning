@@ -20,4 +20,5 @@ content:
         password: admin
 
 custom:
-  using-sdk: false
+  using-sdk: true
+  folder-name: mktest

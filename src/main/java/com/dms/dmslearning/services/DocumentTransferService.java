@@ -13,4 +13,6 @@ public interface DocumentTransferService {
     String uploadMultipartFile(MultipartFile multipartFile) throws IOException;
 
     String uploadFile(File fileName) throws IOException;
+
+    String createFolder() throws Exception;
 }

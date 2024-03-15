@@ -31,6 +31,9 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
     @Autowired
     private NodesApi nodesApi;
 
+    @Value("${custom.folder-name}")
+    private String folderName;
+
     @Override
     public byte[] downloadFile(String fileName, boolean usesdk) throws IOException {
         if (usesdk) {
@@ -59,6 +62,41 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
         return uploadFileToAlfresco(file);
     }
 
+    @Override
+    public String createFolder() {
+        Objects.requireNonNull(folderName);
+
+        String rootPath = "-root-";       // /Company Home
+        String folderType = "cm:folder";  // Standard out-of-the-box folder type
+
+        List<String> folderAspects = new ArrayList<String>();
+        folderAspects.add("cm:titled");
+        Map<String, String> folderProps = new HashMap<>();
+        folderProps.put("cm:title", folderName);
+        folderProps.put("cm:description", "Folder to upload content");
+
+        String nodeId = rootPath; // The id of a node. You can also use one of these well-known aliases: -my-, -shared-, -root-
+        NodeBodyCreate nodeBodyCreate = new NodeBodyCreate();
+        nodeBodyCreate.setName(folderName);
+        nodeBodyCreate.setNodeType(folderType);
+        nodeBodyCreate.setAspectNames(folderAspects);
+        nodeBodyCreate.setProperties(folderProps);
+
+        List<String> include = null;
+        List<String> fields = null;
+        Boolean autoRename = true;
+        Boolean majorVersion = false;
+        // Should versioning be enabled at all?
+        Boolean versioningEnabled = false;
+        Node folderNode = null;
+
+        folderNode = nodesApi.createNode(nodeId, nodeBodyCreate, autoRename, majorVersion, versioningEnabled,
+                    include, fields).getBody().getEntry();
+
+
+        return "Created new folder:" + folderNode.getName();
+    }
+
     private String getTickets(String username, String password) {
         String ticketUrl = "http://localhost:8080/alfresco/api/-default-/public/authentication/versions/1/tickets";
         RestTemplate restTemplate = new RestTemplate();
@@ -76,8 +114,7 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
     }
 
     private String getNodeId(String fileName, String token) throws JsonProcessingException {
-        String folderName = "/mktest" + "/";
-        String relativePath = folderName + fileName;
+        String relativePath = String.format("/%s/%s", folderName, fileName);
         //to get list of items from folder
 //        String nodeUrl = "http://localhost:8080/alfresco/api/-default-/public/alfresco/versions/1/nodes/-root-/children?skipCount=0&maxItems=100&relativePath=/mktest";
         //to get exact details of the items or node
@@ -196,7 +233,8 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
 
     public byte[] getContentUsingSDK(String fileName) throws IOException {
         String nodeId = "";
-        String relativePath = "mktest/" + fileName;
+        String relativePath = String.format("/%s/%s", folderName, fileName);
+
 
         ResponseEntity<NodeEntry> node = nodesApi.getNode("-root-", null, relativePath, null);
 
@@ -214,7 +252,7 @@ public class DocumentTransferServiceImpl implements DocumentTransferService {
         String fileName = file.getOriginalFilename();
         String title = "dockertypefile";
         String description = "this is docker file";
-        String relativeFolderPath = "/mktest";
+        String relativeFolderPath = String.format("/%s/%s", folderName);
 
         Node fileNode = createFileMetadata(parentFolderId, fileName, title, description, relativeFolderPath);
 
